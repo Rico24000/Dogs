@@ -3,152 +3,309 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Dogs Online</title>
+    <title>The Dogs Board Game</title>
     <style>
-        body { font-family: sans-serif; background-color: #2c3e50; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        #status { font-size: 1.2rem; margin: 15px; padding: 10px; background: #34495e; border-radius: 8px; }
-        #board { display: grid; grid-template-columns: repeat(9, 60px); grid-template-rows: repeat(8, 60px); border: 4px solid #1a252f; gap: 2px; }
-        .square { width: 60px; height: 60px; display: flex; justify-content: center; align-items: center; font-size: 35px; cursor: pointer; }
-        .white { background-color: #ecf0f1; }
-        .black { background-color: #7f8c8d; }
-        .selected { outline: 4px solid #e74c3c; outline-offset: -4px; }
-        .valid-move { background-color: #2ecc71 !important; }
-        .piece { pointer-events: none; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { margin-bottom: 5px; }
+        #status {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            font-weight: bold;
+            padding: 10px 20px;
+            background: #34495e;
+            border-radius: 8px;
+        }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(9, 60px);
+            grid-template-rows: repeat(8, 60px);
+            border: 4px solid #1a252f;
+            background-color: #1a252f;
+            gap: 2px;
+        }
+        .square {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 35px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .square.white { background-color: #ecf0f1; }
+        .square.black { background-color: #7f8c8d; }
+        
+        .square.selected {
+            outline: 4px solid #e74c3c;
+            outline-offset: -4px;
+        }
+        .square.valid-move {
+            background-color: #2ecc71 !important;
+            opacity: 0.8;
+        }
+        .piece {
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+        }
     </style>
 </head>
 <body>
 
-    <h1>The Dogs Online</h1>
-    <div id="role-display">Detecting Role...</div>
-    <div id="status">Loading game...</div>
+    <h1>The Dogs</h1>
+    <div id="status">White Dogs' Turn</div>
     <div id="board"></div>
 
-    <script type="module">
-        // 1. IMPORT FIREBASE
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-
-        // 2. YOUR CONFIG
-        const firebaseConfig = {
-            apiKey: "AIzaSyA15FP1irwq2HLOjMqtS93Z_ToE8xWnMvQ",
-            authDomain: "dogs-online.firebaseapp.com",
-            projectId: "dogs-online",
-            storageBucket: "dogs-online.firebasestorage.app",
-            messagingSenderId: "460621226118",
-            appId: "1:460621226118:web:8db2580e4cc06b75743107",
-            databaseURL: "https://dogs-online-default-rtdb.firebaseio.com" // You might need to check this URL in your Firebase Console
-        };
-
-        // 3. INITIALIZE
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const gameRef = ref(db, 'game_state');
-
-        // Identify Player
-        const urlParams = new URLSearchParams(window.location.search);
-        const myRole = urlParams.get('role') || 'spectator'; // 'white' or 'black'
-        document.getElementById('role-display').innerText = `You are playing as: ${myRole.toUpperCase()} DOGS`;
-
-        // Game Constants
-        const ROWS = 8; const COLS = 9;
-        let board = [];
+    <script>
+        const ROWS = 8;
+        const COLS = 9;
+        let board = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
         let currentPlayer = 'white';
         let selectedSquare = null;
-        const PIECES = { 'white': '🐩', 'black': '🐕‍🦺' };
 
-        // 4. LISTEN FOR DATA FROM THE CLOUD
-        onValue(gameRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                board = data.board;
-                currentPlayer = data.currentPlayer;
-                renderBoard();
-            } else {
-                // First time setup if database is empty
-                setupNewGame();
+        const PIECES = {
+            'white': '🐩',
+            'black': '🐕‍🦺'
+        };
+
+        const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('status');
+
+        function initGame() {
+            board = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+            
+            // Black Dogs on White squares (rows 0, 1) -> 9 pieces
+            let blackPlaced = 0;
+            for (let r = 0; r <= 1; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if ((r + c) % 2 === 0 && blackPlaced < 9) {
+                        board[r][c] = 'black';
+                        blackPlaced++;
+                    }
+                }
             }
-        });
-
-        function setupNewGame() {
-            let newBoard = Array(8).fill(null).map(() => Array(9).fill(null));
-            let bP = 0; let wP = 0;
-            for(let r=0; r<2; r++) for(let c=0; c<9; c++) if((r+c)%2===0 && bP<9) { newBoard[r][c]='black'; bP++; }
-            for(let r=6; r<8; r++) for(let c=0; c<9; c++) if((r+c)%2!==0 && wP<9) { newBoard[r][c]='white'; wP++; }
-            pushState(newBoard, 'white');
-        }
-
-        function pushState(newBoard, nextPlayer) {
-            set(gameRef, { board: newBoard, currentPlayer: nextPlayer });
+            
+            // White Dogs on Black squares (rows 6, 7) -> 9 pieces
+            let whitePlaced = 0;
+            for (let r = ROWS - 2; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if ((r + c) % 2 !== 0 && whitePlaced < 9) {
+                        board[r][c] = 'white';
+                        whitePlaced++;
+                    }
+                }
+            }
+            
+            renderBoard();
         }
 
         function renderBoard() {
-            const boardElement = document.getElementById('board');
             boardElement.innerHTML = '';
-            document.getElementById('status').innerText = `${currentPlayer.toUpperCase()}'s Turn`;
-
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
                     const square = document.createElement('div');
                     square.className = `square ${(r + c) % 2 === 0 ? 'white' : 'black'}`;
+                    square.dataset.r = r;
+                    square.dataset.c = c;
+                    
                     if (board[r][c]) {
                         const piece = document.createElement('div');
                         piece.className = 'piece';
                         piece.innerText = PIECES[board[r][c]];
                         square.appendChild(piece);
                     }
-                    if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) square.classList.add('selected');
+
+                    if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) {
+                        square.classList.add('selected');
+                    }
                     
-                    square.onclick = () => handleSquareClick(r, c);
+                    if (selectedSquare && isValidMove(selectedSquare.r, selectedSquare.c, r, c)) {
+                        square.classList.add('valid-move');
+                    }
+
+                    square.addEventListener('click', () => handleSquareClick(r, c));
                     boardElement.appendChild(square);
                 }
             }
+            updateStatus();
         }
 
         function handleSquareClick(r, c) {
-            if (myRole !== currentPlayer) return; // Prevent playing out of turn
+            const clickedPiece = board[r][c];
 
-            if (board[r][c] === currentPlayer) {
+            // Select own piece
+            if (clickedPiece === currentPlayer) {
                 selectedSquare = { r, c };
                 renderBoard();
-            } else if (selectedSquare && !board[r][c]) {
-                if (Math.abs(selectedSquare.r - r) === 1 && Math.abs(selectedSquare.c - c) === 1) {
-                    // Logic for move
-                    const newBoard = JSON.parse(JSON.stringify(board));
-                    newBoard[r][c] = currentPlayer;
-                    newBoard[selectedSquare.r][selectedSquare.c] = null;
-                    
-                    // Capture logic simplified for multiplayer stability
-                    checkCaptures(newBoard, r, c);
-                }
+                return;
+            }
+
+            // Move piece
+            if (selectedSquare && !clickedPiece && isValidMove(selectedSquare.r, selectedSquare.c, r, c)) {
+                board[r][c] = currentPlayer;
+                board[selectedSquare.r][selectedSquare.c] = null;
+                selectedSquare = null;
+                renderBoard();
+
+                // Check captures (this will also handle switching turns)
+                handleCaptures(r, c);
+            } else {
+                selectedSquare = null;
+                renderBoard();
             }
         }
 
-        function checkCaptures(b, r, c) {
-            const opponent = currentPlayer === 'white' ? 'black' : 'white';
-            const dirs = [[-1,-1], [-1,1], [1,-1], [1,1]];
-            let captured = false;
+        function isValidMove(startR, startC, endR, endC) {
+            if (board[endR][endC] !== null) return false;
 
-            dirs.forEach(d => {
-                const diagR = r + d[0]; const diagC = c + d[1];
-                if (diagR >= 0 && diagR < 8 && diagC >= 0 && diagC < 9 && b[diagR][diagC] === currentPlayer) {
-                    const s1r = r + d[0], s1c = c;
-                    const s2r = r, s2c = c + d[1];
-                    [ {r:s1r, c:s1c}, {r:s2r, c:s2c} ].forEach(target => {
-                        if (target.r >= 0 && target.r < 8 && target.c >= 0 && target.c < 9 && b[target.r][target.c] === opponent) {
-                            if (confirm(`Capture! Click OK to flip, Cancel to remove.`)) {
-                                b[target.r][target.c] = currentPlayer;
-                            } else {
-                                b[target.r][target.c] = null;
+            const targetIsWhiteSquare = (endR + endC) % 2 === 0;
+            if (currentPlayer === 'white' && targetIsWhiteSquare) return false;
+            if (currentPlayer === 'black' && !targetIsWhiteSquare) return false;
+
+            const rowDiff = Math.abs(startR - endR);
+            const colDiff = Math.abs(startC - endC);
+            return rowDiff === 1 && colDiff === 1;
+        }
+
+        function handleCaptures(r, c) {
+            const opponent = currentPlayer === 'white' ? 'black' : 'white';
+            const diagonals = [
+                [-1, -1], [-1, 1], [1, -1], [1, 1]
+            ];
+            
+            let capturedPieces = [];
+
+            diagonals.forEach(dir => {
+                const diagR = r + dir[0];
+                const diagC = c + dir[1];
+
+                // Check if we have another piece of our color connected at the corner
+                if (diagR >= 0 && diagR < ROWS && diagC >= 0 && diagC < COLS) {
+                    if (board[diagR][diagC] === currentPlayer) {
+                        
+                        // Check the two opposite-colored squares trapped between our two pieces
+                        const shared1R = r + dir[0];
+                        const shared1C = c;
+                        const shared2R = r;
+                        const shared2C = c + dir[1];
+
+                        if (shared1R >= 0 && shared1R < ROWS && shared1C >= 0 && shared1C < COLS) {
+                            if (board[shared1R][shared1C] === opponent) {
+                                capturedPieces.push({r: shared1R, c: shared1C});
                             }
-                            captured = true;
                         }
-                    });
+                        
+                        if (shared2R >= 0 && shared2R < ROWS && shared2C >= 0 && shared2C < COLS) {
+                            if (board[shared2R][shared2C] === opponent) {
+                                capturedPieces.push({r: shared2R, c: shared2C});
+                            }
+                        }
+                    }
                 }
             });
 
-            pushState(b, opponent);
-            selectedSquare = null;
+            // Filter out duplicate captures if one piece was pinched in multiple ways
+            capturedPieces = capturedPieces.filter((v, i, a) => a.findIndex(t => (t.r === v.r && t.c === v.c)) === i);
+
+            if (capturedPieces.length > 0) {
+                processMultipleCaptures(capturedPieces, opponent, 0);
+            } else {
+                switchTurn();
+            }
         }
+
+        function processMultipleCaptures(captures, opponentPieceType, index) {
+            if (index >= captures.length) {
+                switchTurn();
+                return;
+            }
+
+            const cap = captures[index];
+            
+            // Allow a small delay for the board to render the move before the popup
+            setTimeout(() => {
+                const wantsToFlip = confirm(`You captured a ${opponentPieceType === 'white' ? 'White' : 'Black'} Dog!\n\nPress OK to FLIP it to your side.\nPress Cancel to REMOVE it from the board.`);
+                
+                board[cap.r][cap.c] = null; // Remove opponent piece
+
+                if (wantsToFlip) {
+                    const newSquare = findClosestValidSquare(cap.r, cap.c, currentPlayer);
+                    if (newSquare) {
+                        board[newSquare.r][newSquare.c] = currentPlayer;
+                        alert(`Flipped! The Dog joined your pack at row ${newSquare.r + 1}, column ${newSquare.c + 1}.`);
+                    } else {
+                        alert("No legal squares available to place the flipped Dog. It has been removed instead.");
+                    }
+                }
+                
+                renderBoard();
+                processMultipleCaptures(captures, opponentPieceType, index + 1);
+            }, 50);
+        }
+
+        function findClosestValidSquare(r, c, forPlayer) {
+            let minDistance = Infinity;
+            let bestSquare = null;
+
+            for (let i = 0; i < ROWS; i++) {
+                for (let j = 0; j < COLS; j++) {
+                    const isWhiteSquare = (i + j) % 2 === 0;
+                    const isValidColor = forPlayer === 'black' ? isWhiteSquare : !isWhiteSquare;
+
+                    if (board[i][j] === null && isValidColor) {
+                        const dist = Math.abs(i - r) + Math.abs(j - c);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            bestSquare = { r: i, j };
+                            // Note: We use { r: i, c: j } 
+                            bestSquare = { r: i, c: j }; 
+                        }
+                    }
+                }
+            }
+            return bestSquare;
+        }
+
+        function switchTurn() {
+            currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
+            renderBoard();
+            checkWinCondition();
+        }
+
+        function checkWinCondition() {
+            let whiteCount = 0;
+            let blackCount = 0;
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c] === 'white') whiteCount++;
+                    if (board[r][c] === 'black') blackCount++;
+                }
+            }
+
+            if (whiteCount === 0) {
+                setTimeout(() => alert("Black Dogs win!"), 100);
+            } else if (blackCount === 0) {
+                setTimeout(() => alert("White Dogs win!"), 100);
+            }
+        }
+
+        function updateStatus() {
+            statusElement.innerText = currentPlayer === 'white' ? "White Dogs' Turn (🐩)" : "Black Dogs' Turn (🐕‍🦺)";
+            statusElement.style.color = currentPlayer === 'white' ? "#ecf0f1" : "#bdc3c7";
+        }
+
+        // Start the game
+        initGame();
     </script>
 </body>
 </html>
